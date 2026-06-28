@@ -1,0 +1,63 @@
+apiVersion: guardrail.io/v1
+kind: Policy
+metadata:
+  name: "SEC-INJ-001"
+  version: "1.3.0"
+  description: "Detect SQL injection, XSS, and command injection attacks"
+  author: "security-team"
+  created: "2024-01-15T00:00:00Z"
+  updated: "2024-03-01T00:00:00Z"
+  tags: ["security", "injection", "owasp"]
+spec:
+  frameworks:
+    - name: "OWASP"
+      controls: ["A03-Injection"]
+    - name: "SOC2"
+      controls: ["CC6.1", "CC6.8"]
+  severity: "critical"
+  category: "security"
+  rules:
+    - id: "sql-injection"
+      description: "Detect SQL injection patterns"
+      type: "pattern"
+      config:
+        patterns:
+          - '(?i)(union\s+(all\s+)?select)'
+          - "(?i)(;\\s*(drop|delete|update|insert)\\s)"
+          - "(?i)(or\\s+1\\s*=\\s*1)"
+          - "(?i)('\\s*(or|and)\\s+')"
+    - id: "xss"
+      description: "Detect cross-site scripting patterns"
+      type: "pattern"
+      config:
+        patterns:
+          - '<script[^>]*>'
+          - 'javascript\s*:'
+          - 'on(error|load|click)\s*='
+    - id: "command-injection"
+      description: "Detect OS command injection"
+      type: "pattern"
+      config:
+        patterns:
+          - '[;&|]\s*(cat|ls|whoami|curl|wget)\b'
+          - '\$\(.*\)'
+          - ';\s*rm\s+-rf?\s'
+  remediation:
+    action: "block"
+    message: "Injection attack pattern detected — request blocked"
+    auto_fix: false
+  conditions:
+    source_types: ["user_input"]
+    content_types: ["text", "code"]
+    environments: ["production", "staging", "development"]
+  tests:
+    should_trigger:
+      - input: "'; DROP TABLE users; --"
+        expected_violation: "sql-injection"
+      - input: '<script>alert("xss")</script>'
+        expected_violation: "xss"
+      - input: "; cat /etc/passwd"
+        expected_violation: "command-injection"
+    should_pass:
+      - input: "SELECT name FROM users WHERE id = 1"
+      - input: "The script tag is used in HTML"

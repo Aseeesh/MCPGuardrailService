@@ -1,0 +1,131 @@
+# Azure Cost Estimation — MCPGuardrailService
+# Prices as of 2024 (East US region, USD/month)
+
+free_tier:
+  description: "Development / Portfolio Demo"
+  total_estimated: "$0 - $5/month"
+  services:
+    - name: "App Service (API Gateway)"
+      sku: "F1 (Free)"
+      cost: "$0"
+      limits: "60 CPU-minutes/day, 1GB RAM, 1GB storage"
+
+    - name: "App Service (AI Service)"
+      sku: "F1 (Free)"
+      cost: "$0"
+      limits: "60 CPU-minutes/day, 1GB RAM"
+
+    - name: "Static Web App (Frontend)"
+      sku: "Free"
+      cost: "$0"
+      limits: "100GB bandwidth/month, 2 custom domains"
+
+    - name: "PostgreSQL Flexible Server"
+      sku: "Burstable B1ms"
+      cost: "$0 (750 hours free/12 months)"
+      limits: "1 vCore, 2GB RAM, 32GB storage"
+      note: "Free for first 12 months, then ~$13/month"
+
+    - name: "Azure Cache for Redis"
+      sku: "Basic C0"
+      cost: "$0 (first 12 months)"
+      limits: "250MB, no SLA"
+      note: "Free tier, then ~$16/month"
+
+    - name: "Azure Storage"
+      sku: "Standard LRS"
+      cost: "~$0.10"
+      limits: "5GB hot, 5GB cool (free)"
+
+    - name: "Application Insights"
+      sku: "Pay-as-you-go"
+      cost: "$0"
+      limits: "5GB/month free ingestion"
+
+    - name: "Container Registry"
+      sku: "Basic"
+      cost: "~$5"
+      limits: "10GB storage, 2 webhooks"
+
+basic_tier:
+  description: "Staging / Light Production"
+  total_estimated: "$50 - $100/month"
+  services:
+    - name: "App Service (API) x2"
+      sku: "B1"
+      cost: "~$26"
+      specs: "1 vCore, 1.75GB RAM, custom domain + SSL"
+
+    - name: "App Service (AI)"
+      sku: "B1"
+      cost: "~$13"
+
+    - name: "PostgreSQL Flexible"
+      sku: "B_Standard_B1ms"
+      cost: "~$13"
+      specs: "1 vCore, 2GB RAM, 32GB storage"
+
+    - name: "Redis Cache"
+      sku: "Basic C0"
+      cost: "~$16"
+      specs: "250MB, no SLA"
+
+    - name: "Storage"
+      sku: "Standard LRS"
+      cost: "~$2"
+      specs: "50GB"
+
+    - name: "App Insights"
+      cost: "~$2"
+      specs: "1GB/month over free tier"
+
+    - name: "Container Registry"
+      sku: "Basic"
+      cost: "~$5"
+
+production_tier:
+  description: "Full Production"
+  total_estimated: "$200 - $500/month"
+  services:
+    - name: "App Service (API) x4"
+      sku: "S1 (auto-scale)"
+      cost: "~$146"
+      specs: "1 vCore, 1.75GB RAM each, auto-scale 1-4"
+
+    - name: "App Service (AI) x2"
+      sku: "S1"
+      cost: "~$73"
+
+    - name: "PostgreSQL Flexible"
+      sku: "GP_Standard_D2s_v3"
+      cost: "~$100"
+      specs: "2 vCores, 8GB RAM, 128GB, geo-backup"
+
+    - name: "Redis Cache"
+      sku: "Standard C1"
+      cost: "~$41"
+      specs: "1GB, SLA, replication"
+
+    - name: "Storage"
+      sku: "Standard GRS"
+      cost: "~$10"
+      specs: "100GB with geo-replication"
+
+    - name: "App Insights + Log Analytics"
+      cost: "~$20"
+      specs: "5GB/month, 90-day retention"
+
+    - name: "Container Registry"
+      sku: "Standard"
+      cost: "~$20"
+      specs: "100GB, webhooks, geo-replication"
+
+cost_optimization_tips:
+  - "Use Azure Free Tier services for dev/demo (12-month free offers)"
+  - "Set budget alerts at 80% and 100% thresholds"
+  - "Use reserved instances for production PostgreSQL (1-year: ~40% savings)"
+  - "Enable auto-scale on App Service to scale down during off-peak"
+  - "Use lifecycle management to move audit blobs to cool/archive tier"
+  - "Monitor Application Insights data ingestion to stay under free quota"
+  - "Use F1 App Service for dev — upgrade to B1 only when needed"
+  - "Container Registry Basic is sufficient unless you need geo-replication"

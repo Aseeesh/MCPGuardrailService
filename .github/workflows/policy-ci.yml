@@ -1,0 +1,272 @@
+name: Policy Engine CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "src/policy-engine/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/policy-engine/**"
+
+env:
+  OPA_VERSION: "0.68.0"
+
+jobs:
+  validate-policies:
+    name: Validate Rego Policies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/v${{ env.OPA_VERSION }}/opa_linux_amd64_static
+          chmod +x opa
+          sudo mv opa /usr/local/bin/
+
+      - name: Check Rego syntax
+        run: |
+          find src/policy-engine/policies -name "*.rego" ! -name "*_test.rego" | while read f; do
+            echo "Checking: $f"
+            opa check "$f" --strict
+          done
+
+      - name: Run policy tests
+        run: |
+          opa test src/policy-engine/policies src/policy-engine/tests -v --format json | tee test-results.json
+
+      - name: Verify test results
+        run: |
+          FAILED=$(jq '[.[] | select(.pass == false)] | length' test-results.json)
+          TOTAL=$(jq 'length' test-results.json)
+          PASSED=$((TOTAL - FAILED))
+          echo "Tests: $PASSED/$TOTAL passed"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED policy tests failed"
+            jq '.[] | select(.pass == false)' test-results.json
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-test-results
+          path: test-results.json
+
+  validate-yaml:
+    name: Validate YAML Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema
+
+      - name: Validate YAML policies
+        run: |
+          python -c "
+          import yaml, sys
+          from pathlib import Path
+
+          errors = []
+          required_fields = ['apiVersion', 'kind', 'metadata', 'spec']
+          meta_fields = ['name', 'version', 'description']
+
+          for f in Path('src/policy-engine/templates').glob('*.yaml'):
+              if f.name == 'policy_template.yaml':
+                  continue
+              try:
+                  with open(f) as fh:
+                      doc = yaml.safe_load(fh)
+                  for field in required_fields:
+                      if field not in doc:
+                          errors.append(f'{f.name}: missing {field}')
+                  for field in meta_fields:
+                      if field not in doc.get('metadata', {}):
+                          errors.append(f'{f.name}: missing metadata.{field}')
+                  spec = doc.get('spec', {})
+                  if not spec.get('frameworks'):
+                      errors.append(f'{f.name}: no framework mappings')
+                  if not spec.get('rules'):
+                      errors.append(f'{f.name}: no rules defined')
+                  if not spec.get('tests', {}).get('should_trigger'):
+                      errors.append(f'{f.name}: no positive test cases')
+                  print(f'✓ {f.name}')
+              except Exception as e:
+                  errors.append(f'{f.name}: {e}')
+
+          if errors:
+              print('\nErrors:')
+              for e in errors:
+                  print(f'  ✗ {e}')
+              sys.exit(1)
+          print(f'\nAll YAML policies valid')
+          "
+
+  golden-tests:
+    name: Golden Test Suite
+    runs-on: ubuntu-latest
+    needs: [validate-policies]
+    services:
+      opa:
+        image: openpolicyagent/opa:latest
+        ports:
+          - 8181:8181
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8181/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install httpx pyyaml
+
+      - name: Load policies into OPA
+        run: |
+          find src/policy-engine/policies -name "*.rego" ! -name "*_test.rego" | while read f; do
+            POLICY_ID=$(echo "$f" | sed 's|src/policy-engine/policies/||;s|/|.|g;s|\.rego||')
+            curl -s -X PUT "http://localhost:8181/v1/policies/$POLICY_ID" \
+              -H "Content-Type: text/plain" \
+              --data-binary "@$f"
+            echo "Loaded: $POLICY_ID"
+          done
+
+      - name: Run golden tests from YAML
+        run: |
+          python -c "
+          import httpx, yaml, sys, json
+          from pathlib import Path
+
+          client = httpx.Client(base_url='http://localhost:8181')
+          failures = []
+          total = 0
+
+          for f in Path('src/policy-engine/templates').glob('*.yaml'):
+              if f.name == 'policy_template.yaml':
+                  continue
+              with open(f) as fh:
+                  doc = yaml.safe_load(fh)
+
+              tests = doc.get('spec', {}).get('tests', {})
+
+              for tc in tests.get('should_trigger', []):
+                  total += 1
+                  resp = client.post('/v1/data/pii/gdpr/violations', json={
+                      'input': {
+                          'content': tc['input'],
+                          'context': {'purpose': '', 'retention_days': 0, 'cross_border': False, 'data_category': ''}
+                      }
+                  })
+                  result = resp.json().get('result', [])
+                  if not result:
+                      failures.append(f\"{f.name}: expected trigger on '{tc['input']}' but got no violations\")
+                  else:
+                      print(f'✓ TRIGGER: {tc[\"input\"][:50]}...')
+
+              for tc in tests.get('should_pass', []):
+                  total += 1
+                  resp = client.post('/v1/data/pii/gdpr/violations', json={
+                      'input': {
+                          'content': tc['input'],
+                          'context': {'purpose': '', 'retention_days': 0, 'cross_border': False, 'data_category': ''}
+                      }
+                  })
+                  result = resp.json().get('result', [])
+                  if result:
+                      failures.append(f\"{f.name}: expected pass on '{tc['input']}' but got violations\")
+                  else:
+                      print(f'✓ PASS: {tc[\"input\"][:50]}...')
+
+          print(f'\n{total - len(failures)}/{total} golden tests passed')
+          if failures:
+              for fail in failures:
+                  print(f'  ✗ {fail}')
+              sys.exit(1)
+          "
+
+  compliance-report:
+    name: Generate Compliance Report
+    runs-on: ubuntu-latest
+    needs: [golden-tests]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Generate coverage report
+        run: |
+          python -c "
+          import yaml, json
+          from pathlib import Path
+          from datetime import datetime
+
+          policies = []
+          for f in Path('src/policy-engine/templates').glob('*.yaml'):
+              if f.name == 'policy_template.yaml':
+                  continue
+              with open(f) as fh:
+                  policies.append(yaml.safe_load(fh))
+
+          for fw in ['GDPR', 'HIPAA', 'SOC2']:
+              controls = set()
+              for p in policies:
+                  for f in p.get('spec', {}).get('frameworks', []):
+                      if f['name'] == fw:
+                          controls.update(f['controls'])
+              print(f'{fw}: {len(controls)} controls covered')
+
+          with open('src/policy-engine/mappings/compliance_matrix.yaml') as f:
+              matrix = yaml.safe_load(f)
+          summary = matrix.get('summary', {})
+          print(f'\nOverall Coverage: {summary.get(\"coverage_percentage\", 0)}%')
+          print(f'Fully Covered: {summary.get(\"fully_covered\", 0)}')
+          print(f'Gaps: {summary.get(\"gaps\", 0)}')
+          "
+
+      - name: Upload compliance report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: src/policy-engine/mappings/compliance_matrix.yaml
+
+  deploy-policies:
+    name: Deploy to OPA
+    runs-on: ubuntu-latest
+    needs: [golden-tests, validate-yaml]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy policies
+        run: |
+          echo "Deploy policies to production OPA instance"
+          echo "Target: \${{ vars.OPA_PRODUCTION_URL }}"
+          # In production, this would push policies to a running OPA instance:
+          # find src/policy-engine/policies -name "*.rego" ! -name "*_test.rego" | while read f; do
+          #   POLICY_ID=$(echo "$f" | sed 's|src/policy-engine/policies/||;s|/|.|g;s|\.rego||')
+          #   curl -X PUT "$OPA_PRODUCTION_URL/v1/policies/$POLICY_ID" \
+          #     -H "Content-Type: text/plain" \
+          #     --data-binary "@$f"
+          # done

@@ -1,0 +1,151 @@
+apiVersion: guardrail.io/v1
+kind: ComplianceMatrix
+metadata:
+  name: "guardrail-compliance-matrix"
+  version: "1.0.0"
+  generated: "2024-01-15T00:00:00Z"
+  description: "Maps all guardrail policies to regulatory framework controls"
+
+frameworks:
+  - name: GDPR
+    full_name: "General Data Protection Regulation"
+    jurisdiction: "EU/EEA"
+    controls:
+      - id: ART5
+        name: "Principles of Processing"
+        policies:
+          - PII-GDPR-001 (gdpr_pii.rego)
+        coverage: full
+        evidence: "Automated PII detection with purpose limitation, data minimization, and storage limitation checks"
+      - id: ART6
+        name: "Lawful Basis for Processing"
+        policies:
+          - PII-GDPR-001 (gdpr_pii.rego)
+        coverage: full
+        evidence: "Purpose validation against approved lawful basis list"
+      - id: ART9
+        name: "Special Categories of Data"
+        policies:
+          - PII-GDPR-001 (gdpr_pii.rego)
+        coverage: full
+        evidence: "Keyword detection for all 10 special category types with mandatory blocking"
+      - id: ART17
+        name: "Right to Erasure"
+        policies: []
+        coverage: gap
+        evidence: "Requires integration with data subject request workflow"
+      - id: ART25
+        name: "Data Protection by Design"
+        policies:
+          - PII-GDPR-EMAIL-001 (gdpr_email_policy.yaml)
+        coverage: partial
+        evidence: "Auto-redaction of PII in outputs, but manual review needed for design decisions"
+      - id: ART33
+        name: "Breach Notification"
+        policies: []
+        coverage: gap
+        evidence: "Requires integration with incident management system"
+      - id: ART35
+        name: "DPIA"
+        policies: []
+        coverage: gap
+        evidence: "Requires manual assessment workflow"
+      - id: ART46
+        name: "Cross-Border Transfer"
+        policies:
+          - PII-GDPR-001 (gdpr_pii.rego)
+        coverage: full
+        evidence: "Blocks transfers without adequacy decision or standard contractual clauses"
+
+  - name: HIPAA
+    full_name: "Health Insurance Portability and Accountability Act"
+    jurisdiction: "United States"
+    controls:
+      - id: "164.308"
+        name: "Administrative Safeguards"
+        policies: []
+        coverage: gap
+        evidence: "Requires organizational policy integration"
+      - id: "164.312"
+        name: "Technical Safeguards"
+        policies:
+          - PII-HIPAA-001 (hipaa_phi.rego)
+        coverage: partial
+        evidence: "Encryption validation for PHI, but access control requires IAM integration"
+      - id: "164.502"
+        name: "Uses and Disclosures"
+        policies:
+          - PII-HIPAA-001 (hipaa_phi.rego)
+          - PII-HIPAA-PHI-001 (hipaa_phi_policy.yaml)
+        coverage: full
+        evidence: "PHI keyword detection, authorization checks, and minimum necessary enforcement"
+      - id: "164.514"
+        name: "De-identification Standard"
+        policies:
+          - PII-HIPAA-001 (hipaa_phi.rego)
+        coverage: full
+        evidence: "SSN and MRN pattern detection with automatic redaction"
+      - id: "164.524"
+        name: "Access Rights"
+        policies: []
+        coverage: gap
+        evidence: "Requires patient portal integration"
+
+  - name: SOC2
+    full_name: "Service Organization Control 2"
+    jurisdiction: "Global"
+    controls:
+      - id: CC6.1
+        name: "Logical Access Security"
+        policies:
+          - PII-SOC2-001 (soc2_data.rego)
+          - SEC-INJ-001 (injection.rego)
+        coverage: full
+        evidence: "Credential exposure detection, cloud key detection, injection prevention"
+      - id: CC6.5
+        name: "System Boundaries"
+        policies:
+          - PII-SOC2-001 (soc2_data.rego)
+        coverage: partial
+        evidence: "Public access detection, but network segmentation requires infra scanning"
+      - id: CC6.7
+        name: "Data Transmission Protection"
+        policies:
+          - PII-SOC2-001 (soc2_data.rego)
+        coverage: partial
+        evidence: "Backup encryption checks, but transit encryption requires network analysis"
+      - id: CC7.2
+        name: "Monitoring Activities"
+        policies:
+          - PII-SOC2-001 (soc2_data.rego)
+        coverage: full
+        evidence: "Detects disabled audit logging configurations"
+      - id: CC8.1
+        name: "Change Management"
+        policies: []
+        coverage: gap
+        evidence: "Requires CI/CD pipeline integration"
+
+summary:
+  total_controls: 17
+  fully_covered: 8
+  partially_covered: 4
+  gaps: 5
+  coverage_percentage: 47.1
+  gap_remediation_plan:
+    - control: "GDPR-ART17"
+      plan: "Integrate data subject request workflow with policy engine"
+      priority: high
+      target_date: "2024-Q2"
+    - control: "GDPR-ART33"
+      plan: "Connect to incident management system for breach detection alerts"
+      priority: high
+      target_date: "2024-Q2"
+    - control: "HIPAA-164.308"
+      plan: "Implement administrative safeguard policies based on org procedures"
+      priority: medium
+      target_date: "2024-Q3"
+    - control: "SOC2-CC8.1"
+      plan: "Add change management validation to CI/CD pipeline"
+      priority: medium
+      target_date: "2024-Q2"

@@ -1,0 +1,195 @@
+{
+  "dashboard": {
+    "title": "Guardrail Service Overview",
+    "uid": "guardrail-overview",
+    "timezone": "utc",
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate (req/s)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(guardrail_requests_total[1m])",
+            "legendFormat": "Requests/s"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Pipeline Latency (ms)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+        "targets": [
+          {
+            "expr": "guardrail_total_latency_ms{quantile=\"0.5\"}",
+            "legendFormat": "p50"
+          },
+          {
+            "expr": "guardrail_total_latency_ms{quantile=\"0.95\"}",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "guardrail_total_latency_ms{quantile=\"0.99\"}",
+            "legendFormat": "p99"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 50 },
+                { "color": "red", "value": 100 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Error Rate (%)",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 4, "x": 16, "y": 0 },
+        "targets": [
+          {
+            "expr": "rate(guardrail_errors_total[5m]) / rate(guardrail_requests_total[5m]) * 100",
+            "legendFormat": "Error Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Decisions Breakdown",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "guardrail_decisions_total",
+            "legendFormat": "{{decision}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Stage Latency Comparison",
+        "type": "bargauge",
+        "gridPos": { "h": 8, "w": 7, "x": 6, "y": 8 },
+        "targets": [
+          {
+            "expr": "guardrail_deterministic_latency_ms{quantile=\"0.95\"}",
+            "legendFormat": "Deterministic p95"
+          },
+          {
+            "expr": "guardrail_opa_latency_ms{quantile=\"0.95\"}",
+            "legendFormat": "OPA p95"
+          },
+          {
+            "expr": "guardrail_llm_judge_latency_ms{quantile=\"0.95\"}",
+            "legendFormat": "LLM Judge p95"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "ms" } }
+      },
+      {
+        "id": 6,
+        "title": "Cache Hit Rate (%)",
+        "type": "gauge",
+        "gridPos": { "h": 8, "w": 4, "x": 13, "y": 8 },
+        "targets": [
+          {
+            "expr": "guardrail_cache_hits / (guardrail_cache_hits + guardrail_cache_misses) * 100",
+            "legendFormat": "Hit Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "steps": [
+                { "color": "red", "value": 0 },
+                { "color": "yellow", "value": 60 },
+                { "color": "green", "value": 80 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Queue Depth",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 7, "x": 17, "y": 8 },
+        "targets": [
+          {
+            "expr": "rabbitmq_queue_messages{queue=\"guardrail.llm-judge\"}",
+            "legendFormat": "LLM Judge"
+          },
+          {
+            "expr": "rabbitmq_queue_messages{queue=\"guardrail.audit-log\"}",
+            "legendFormat": "Audit Log"
+          },
+          {
+            "expr": "rabbitmq_queue_messages{queue=\"guardrail.remediation\"}",
+            "legendFormat": "Remediation"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Database Connections",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "pg_stat_activity_count",
+            "legendFormat": "Active Connections"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "CPU Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total{service=\"api-gateway\"}[1m]) * 100",
+            "legendFormat": "API Gateway"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent" } }
+      },
+      {
+        "id": 10,
+        "title": "Memory Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+        "targets": [
+          {
+            "expr": "process_resident_memory_bytes{service=\"api-gateway\"} / 1024 / 1024",
+            "legendFormat": "API Gateway (MB)"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "decmbytes" } }
+      }
+    ]
+  }
+}

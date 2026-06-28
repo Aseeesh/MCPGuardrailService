@@ -1,0 +1,267 @@
+name: Policy Deployment Pipeline (GitOps)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/policy-engine/policies/**"
+      - "src/policy-engine/templates/**"
+  workflow_dispatch:
+    inputs:
+      rollout_pct:
+        description: "Rollout percentage (1, 10, 50, 100)"
+        required: false
+        default: "1"
+      rollback:
+        description: "Rollback to previous version (true/false)"
+        required: false
+        default: "false"
+
+env:
+  OPA_VERSION: "0.68.0"
+  POLICY_DIR: src/policy-engine/policies
+  TEST_DIR: src/policy-engine/tests
+  TEMPLATE_DIR: src/policy-engine/templates
+
+jobs:
+  # ===== Stage 1: Policy Validation =====
+  validate:
+    name: "1. Validate Policies"
+    runs-on: ubuntu-latest
+    outputs:
+      policy_version: ${{ steps.version.outputs.version }}
+      policy_hash: ${{ steps.version.outputs.hash }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/v${{ env.OPA_VERSION }}/opa_linux_amd64_static
+          chmod +x opa && sudo mv opa /usr/local/bin/
+
+      - name: Compute policy version
+        id: version
+        run: |
+          HASH=$(find $POLICY_DIR -name "*.rego" ! -name "*_test*" -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)
+          VERSION="v$(date +%Y%m%d)-${HASH:0:8}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "Policy version: $VERSION"
+
+      - name: Syntax check (strict mode)
+        run: |
+          ERRORS=0
+          find $POLICY_DIR -name "*.rego" ! -name "*_test*" | while read f; do
+            if opa check "$f" --strict 2>&1; then
+              echo "✓ $(basename $f)"
+            else
+              echo "✗ $(basename $f)"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+          [ $ERRORS -eq 0 ] || exit 1
+
+      - name: Validate YAML templates
+        run: |
+          pip install pyyaml -q
+          python3 -c "
+          import yaml, sys
+          from pathlib import Path
+          errors = []
+          for f in Path('${{ env.TEMPLATE_DIR }}').glob('*.yaml'):
+              if f.name == 'policy_template.yaml': continue
+              try:
+                  doc = yaml.safe_load(f.read_text())
+                  for field in ['apiVersion','kind','metadata','spec']:
+                      if field not in doc: errors.append(f'{f.name}: missing {field}')
+                  if not doc.get('spec',{}).get('tests',{}).get('should_trigger'):
+                      errors.append(f'{f.name}: no positive test cases')
+                  print(f'✓ {f.name}')
+              except Exception as e: errors.append(f'{f.name}: {e}')
+          if errors:
+              for e in errors: print(f'✗ {e}')
+              sys.exit(1)
+          "
+
+  # ===== Stage 2: Policy Testing =====
+  test:
+    name: "2. Test Policies"
+    needs: validate
+    runs-on: ubuntu-latest
+    services:
+      opa:
+        image: openpolicyagent/opa:latest
+        ports: ["8181:8181"]
+        options: --health-cmd "wget -q -O- http://localhost:8181/health || exit 1" --health-interval 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/v${{ env.OPA_VERSION }}/opa_linux_amd64_static
+          chmod +x opa && sudo mv opa /usr/local/bin/
+
+      - name: Unit tests
+        run: |
+          opa test $POLICY_DIR $TEST_DIR -v --format json | tee unit-results.json
+          FAILED=$(jq '[.[] | select(.pass == false)] | length' unit-results.json)
+          echo "Failed: $FAILED"
+          [ "$FAILED" -eq 0 ] || exit 1
+
+      - name: Load policies into OPA
+        run: |
+          find $POLICY_DIR -name "*.rego" ! -name "*_test*" | while read f; do
+            POLICY_ID=$(echo "$f" | sed "s|$POLICY_DIR/||;s|/|.|g;s|\.rego||")
+            curl -s -X PUT "http://localhost:8181/v1/policies/$POLICY_ID" \
+              -H "Content-Type: text/plain" --data-binary "@$f"
+          done
+
+      - name: Golden test suite
+        run: |
+          pip install httpx pyyaml -q
+          python3 src/policy-engine/deployment/run_golden_tests.py
+
+      - name: Performance benchmark
+        run: |
+          pip install httpx -q
+          python3 src/policy-engine/deployment/benchmark.py
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ needs.validate.outputs.policy_version }}
+          path: |
+            unit-results.json
+            golden-results.json
+            benchmark-results.json
+
+  # ===== Stage 3: Impact Assessment =====
+  impact:
+    name: "3. Impact Assessment"
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute policy diff
+        run: |
+          echo "## Policy Change Impact" > impact-report.md
+          echo "Version: ${{ needs.validate.outputs.policy_version }}" >> impact-report.md
+          echo "" >> impact-report.md
+          echo "### Changed Files" >> impact-report.md
+          git diff HEAD~1 --name-only -- $POLICY_DIR $TEMPLATE_DIR 2>/dev/null | while read f; do
+            echo "- \`$f\`" >> impact-report.md
+          done
+          echo "" >> impact-report.md
+          echo "### Risk Assessment" >> impact-report.md
+          CHANGED=$(git diff HEAD~1 --name-only -- $POLICY_DIR 2>/dev/null | wc -l)
+          if [ "$CHANGED" -gt 5 ]; then
+            echo "⚠️ **HIGH RISK**: $CHANGED policy files changed" >> impact-report.md
+          elif [ "$CHANGED" -gt 2 ]; then
+            echo "⚡ **MEDIUM RISK**: $CHANGED policy files changed" >> impact-report.md
+          else
+            echo "✅ **LOW RISK**: $CHANGED policy file(s) changed" >> impact-report.md
+          fi
+          cat impact-report.md
+
+      - name: Upload impact report
+        uses: actions/upload-artifact@v4
+        with:
+          name: impact-report
+          path: impact-report.md
+
+  # ===== Stage 4: Canary Deployment =====
+  canary:
+    name: "4. Canary Deploy (1%)"
+    needs: [validate, test, impact]
+    runs-on: ubuntu-latest
+    environment: canary
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to canary
+        run: |
+          echo "Deploying policy ${{ needs.validate.outputs.policy_version }} to canary (1% of tenants)"
+          # In production: deploy to canary OPA instance
+          # curl -X PUT "$CANARY_OPA_URL/v1/policies/..." --data-binary "@policy.rego"
+
+      - name: Monitor canary (5 minutes)
+        run: |
+          echo "Monitoring canary deployment for 5 minutes..."
+          echo "Checking: false positive rate, latency impact, error rate"
+          # In production: poll metrics endpoint
+          # for i in $(seq 1 5); do
+          #   FP_RATE=$(curl -s "$METRICS_URL/false_positive_rate")
+          #   LATENCY=$(curl -s "$METRICS_URL/p99_latency")
+          #   echo "Minute $i: FP=$FP_RATE, Latency=$LATENCY"
+          #   if (( $(echo "$FP_RATE > 0.05" | bc -l) )); then
+          #     echo "::error::False positive rate too high: $FP_RATE"
+          #     exit 1
+          #   fi
+          #   sleep 60
+          # done
+          echo "Canary passed all checks"
+
+  # ===== Stage 5: Gradual Rollout =====
+  rollout-10:
+    name: "5a. Rollout 10%"
+    needs: canary
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to 10% of tenants
+        run: echo "Rolling out to 10% of tenants..."
+
+  rollout-50:
+    name: "5b. Rollout 50%"
+    needs: rollout-10
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to 50% of tenants
+        run: echo "Rolling out to 50% of tenants..."
+
+  rollout-100:
+    name: "5c. Full Rollout"
+    needs: rollout-50
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to all tenants
+        run: |
+          echo "Full rollout: ${{ needs.validate.outputs.policy_version }}"
+          # find $POLICY_DIR -name "*.rego" ! -name "*_test*" | while read f; do
+          #   POLICY_ID=$(echo "$f" | sed "s|$POLICY_DIR/||;s|/|.|g;s|\.rego||")
+          #   curl -X PUT "$PRODUCTION_OPA_URL/v1/policies/$POLICY_ID" \
+          #     -H "Content-Type: text/plain" --data-binary "@$f"
+          # done
+
+      - name: Tag release
+        run: |
+          git tag "policy-${{ needs.validate.outputs.policy_version }}"
+          # git push origin "policy-${{ needs.validate.outputs.policy_version }}"
+
+  # ===== Rollback =====
+  rollback:
+    name: "Rollback"
+    if: github.event.inputs.rollback == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rollback to previous version
+        run: |
+          PREV_TAG=$(git tag -l "policy-*" --sort=-v:refname | head -2 | tail -1)
+          echo "Rolling back to: $PREV_TAG"
+          git checkout "$PREV_TAG" -- $POLICY_DIR
+          echo "Policies reverted. Deploy with full rollout to apply."

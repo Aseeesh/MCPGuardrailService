@@ -1,0 +1,51 @@
+apiVersion: guardrail.io/v1
+kind: Policy
+metadata:
+  name: ""                    # Unique policy identifier (e.g., PII-GDPR-001)
+  version: "1.0.0"            # SemVer
+  description: ""
+  author: ""
+  created: ""                 # ISO 8601
+  updated: ""
+  tags: []
+spec:
+  # Which compliance frameworks this policy maps to
+  frameworks:
+    - name: ""                # GDPR | HIPAA | SOC2 | OWASP | INTERNAL
+      controls: []            # Specific control IDs
+
+  # Severity: critical | high | medium | low
+  severity: "medium"
+
+  # Policy category: pii | security | compliance | safety | brand
+  category: ""
+
+  # Detection rules
+  rules:
+    - id: ""
+      description: ""
+      type: "pattern"         # pattern | keyword | semantic | composite
+      config:
+        patterns: []          # Regex patterns
+        keywords: []          # Keyword matches
+        threshold: 0.8        # Confidence threshold for semantic rules
+
+  # What to do when violation is detected
+  remediation:
+    action: "block"           # block | redact | rewrite | escalate | log
+    message: ""
+    auto_fix: false
+
+  # Conditions that must be true for policy to apply
+  conditions:
+    source_types: []          # user_input | llm_output | document | api_response
+    content_types: []         # text | code | config | email
+    environments: []          # production | staging | development
+
+  # Golden test cases for validation
+  tests:
+    should_trigger:
+      - input: ""
+        expected_violation: ""
+    should_pass:
+      - input: ""

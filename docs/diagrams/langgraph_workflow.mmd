@@ -1,0 +1,74 @@
+%%{ init: { 'theme': 'dark' } }%%
+stateDiagram-v2
+    [*] --> Intake: Content + Context
+
+    Intake --> Plan: Initialize state
+
+    Plan --> Execute_PII: Determine checks<br/>based on frameworks + source
+    note right of Plan
+        Checks selected:
+        - PII (always)
+        - Security (user input)
+        - Compliance (if frameworks)
+        - Safety (always)
+        - Brand (text/email/chat)
+    end note
+
+    Execute_PII --> Execute_Policy: PII findings
+
+    state Execute_PII {
+        [*] --> GDPR_Check
+        [*] --> HIPAA_Check
+        [*] --> SOC2_Check
+        GDPR_Check --> [*]
+        HIPAA_Check --> [*]
+        SOC2_Check --> [*]
+    }
+
+    Execute_Policy --> Evaluate: Policy findings
+
+    state Execute_Policy {
+        [*] --> Injection_Check
+        [*] --> Safety_Check
+        [*] --> Brand_Check
+        Injection_Check --> [*]
+        Safety_Check --> [*]
+        Brand_Check --> [*]
+    }
+
+    Evaluate --> Remediate: confidence ≥ 0.70
+    Evaluate --> Escalate: confidence < 0.70<br/>or 3+ cross-category findings
+
+    state decision <<choice>>
+    Evaluate --> decision
+    decision --> Remediate: Auto-handle
+    decision --> Escalate: Human review needed
+
+    Remediate --> Report
+    Escalate --> Report
+
+    state Remediate {
+        [*] --> Determine_Action
+        Determine_Action --> Redact: PII violations
+        Determine_Action --> Rewrite: Tone/brand
+        Determine_Action --> Block: Critical security
+        Redact --> [*]
+        Rewrite --> [*]
+        Block --> [*]
+    }
+
+    state Escalate {
+        [*] --> Create_Ticket
+        Create_Ticket --> Submit_Queue: Priority sorted
+        Submit_Queue --> [*]
+    }
+
+    Report --> [*]: Audit trail + metrics
+
+    note right of Report
+        Generates:
+        - Audit trail entry
+        - Violation summary
+        - Framework impact
+        - Performance metrics
+    end note

@@ -1,0 +1,52 @@
+name: Production Readiness Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  readiness:
+    name: Validate Readiness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run readiness checks
+        run: bash scripts/readiness/validate.sh
+
+      - name: Validate checklist YAML
+        run: |
+          pip install pyyaml -q
+          python3 -c "
+          import yaml, sys
+          with open('scripts/readiness/checklist.yaml') as f:
+              doc = yaml.safe_load(f)
+          total = doc['summary']['total_controls']
+          implemented = doc['summary']['implemented']
+          score = doc['summary']['readiness_score']
+          print(f'Controls: {implemented}/{total} implemented')
+          print(f'Readiness Score: {score}%')
+          if score < 80:
+              print('::error::Readiness score below 80%')
+              sys.exit(1)
+          "
+
+      - name: Check security files exist
+        run: |
+          FILES=(
+            "src/api-gateway/Security/JwtAuthMiddleware.cs"
+            "src/api-gateway/Security/RateLimitingMiddleware.cs"
+            "src/api-gateway/Security/SecurityHeadersMiddleware.cs"
+            "src/api-gateway/Reliability/ResiliencePolicy.cs"
+            "src/api-gateway/Observability/ObservabilitySetup.cs"
+          )
+          for f in "${FILES[@]}"; do
+            [ -f "$f" ] && echo "✓ $f" || { echo "✗ $f MISSING"; exit 1; }
+          done
+
+      - name: Verify frontend builds
+        run: |
+          cd src/frontend
+          npm install --silent
+          npm run build

@@ -1,0 +1,60 @@
+apiVersion: guardrail.io/v1
+kind: Policy
+metadata:
+  name: "PII-HIPAA-PHI-001"
+  version: "1.0.0"
+  description: "Detect Protected Health Information under HIPAA Safe Harbor"
+  author: "compliance-team"
+  created: "2024-01-15T00:00:00Z"
+  updated: "2024-01-15T00:00:00Z"
+  tags: ["phi", "hipaa", "healthcare"]
+spec:
+  frameworks:
+    - name: "HIPAA"
+      controls: ["164.502", "164.514", "164.312"]
+  severity: "critical"
+  category: "pii"
+  rules:
+    - id: "ssn-pattern"
+      description: "Detect Social Security Numbers"
+      type: "pattern"
+      config:
+        patterns:
+          - '\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b'
+    - id: "mrn-pattern"
+      description: "Detect Medical Record Numbers"
+      type: "pattern"
+      config:
+        patterns:
+          - 'MRN[-:\s]?[A-Z0-9]{6,12}'
+    - id: "phi-keywords"
+      description: "Detect PHI-related keywords"
+      type: "keyword"
+      config:
+        keywords:
+          - "patient name"
+          - "diagnosis"
+          - "treatment plan"
+          - "prescription"
+          - "lab result"
+          - "blood type"
+          - "medical record"
+  remediation:
+    action: "block"
+    message: "PHI detected — blocked under HIPAA Safe Harbor requirements"
+    auto_fix: false
+  conditions:
+    source_types: ["llm_output", "user_input", "api_response"]
+    content_types: ["text"]
+    environments: ["production", "staging", "development"]
+  tests:
+    should_trigger:
+      - input: "Patient SSN is 123-45-6789"
+        expected_violation: "ssn-pattern"
+      - input: "MRN: ABC123456 shows diagnosis of diabetes"
+        expected_violation: "mrn-pattern"
+      - input: "The patient name is John and his blood type is O+"
+        expected_violation: "phi-keywords"
+    should_pass:
+      - input: "The hospital has 500 beds"
+      - input: "Healthcare costs increased by 5%"

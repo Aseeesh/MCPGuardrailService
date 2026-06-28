@@ -1,0 +1,98 @@
+%%{ init: { 'theme': 'dark' } }%%
+graph TB
+    subgraph Client["Client Layer"]
+        FE[React 19.2 Dashboard<br/>TypeScript + Vite]
+        API_CLIENT[API Consumers<br/>REST/Webhook]
+    end
+
+    subgraph Gateway["API Gateway — .NET 9"]
+        SEC[Security Layer<br/>JWT · RBAC · Rate Limit · CORS]
+        PIPE[Detection Pipeline<br/>Deterministic → OPA → LLM]
+        REM[Remediation Engine<br/>Redact · Rewrite · Block · Escalate]
+        AUD[Audit Service<br/>SHA-256 Hash Chain]
+        COMP[Compliance Controls<br/>GDPR · HIPAA · SOC2]
+        PERF[Performance<br/>Cache · Metrics · CircuitBreaker]
+    end
+
+    subgraph AI["AI Service — Python FastAPI"]
+        AGENTS[LangGraph Agents<br/>PII · Policy · Remediation · Report]
+        LLM_JUDGE[LLM-as-Judge<br/>5 Prompt Templates]
+        REWRITE[Rewrite Engine<br/>6 Templates]
+        REVIEW[Review Queue<br/>Human-in-the-Loop]
+        MCP_TOOLS[MCP Tools<br/>5 Custom Tools]
+    end
+
+    subgraph MCP["MCP Servers"]
+        AZURE_MCP[Azure MCP<br/>200+ Tools]
+        DAWN_MCP[Dawnguard MCP<br/>Security Insights]
+        CUSTOM_MCP[Custom Guardrail<br/>MCP Server]
+    end
+
+    subgraph Policy["Policy Engine"]
+        OPA[Open Policy Agent<br/>Hot Reload]
+        REGO[Rego Policies<br/>6 Packages]
+        YAML_POL[YAML Templates<br/>Golden Tests]
+    end
+
+    subgraph Data["Data Layer"]
+        PG[(PostgreSQL 16<br/>Audit Trail)]
+        REDIS[(Redis 7<br/>L1/L2 Cache)]
+        RABBIT[(RabbitMQ<br/>Async Queue)]
+        BLOB[(Azure Blob<br/>Payload Archive)]
+    end
+
+    subgraph Monitoring["Observability"]
+        PROM[Prometheus]
+        GRAF[Grafana<br/>10 Panels]
+        OTEL[OpenTelemetry<br/>Traces + Metrics]
+        INSIGHTS[App Insights<br/>Alerts]
+    end
+
+    FE --> SEC
+    API_CLIENT --> SEC
+    SEC --> PIPE
+    PIPE --> REM
+    PIPE --> AUD
+    REM --> AUD
+    PIPE --> |OPA Check| OPA
+    PIPE --> |Async| LLM_JUDGE
+    REM --> REWRITE
+    REM --> REVIEW
+
+    AGENTS --> MCP_TOOLS
+    MCP_TOOLS --> AZURE_MCP
+    MCP_TOOLS --> DAWN_MCP
+    MCP_TOOLS --> CUSTOM_MCP
+
+    OPA --> REGO
+    REGO --> YAML_POL
+
+    AUD --> PG
+    AUD --> BLOB
+    PERF --> REDIS
+    PIPE --> RABBIT
+    RABBIT --> LLM_JUDGE
+
+    PERF --> PROM
+    OTEL --> PROM
+    PROM --> GRAF
+    Gateway --> INSIGHTS
+
+    COMP --> AUD
+    COMP --> OPA
+
+    classDef client fill:#1e40af,stroke:#3b82f6,color:#fff
+    classDef gateway fill:#065f46,stroke:#10b981,color:#fff
+    classDef ai fill:#7c2d12,stroke:#f97316,color:#fff
+    classDef mcp fill:#581c87,stroke:#a855f7,color:#fff
+    classDef policy fill:#713f12,stroke:#eab308,color:#fff
+    classDef data fill:#1e293b,stroke:#64748b,color:#fff
+    classDef monitor fill:#831843,stroke:#ec4899,color:#fff
+
+    class FE,API_CLIENT client
+    class SEC,PIPE,REM,AUD,COMP,PERF gateway
+    class AGENTS,LLM_JUDGE,REWRITE,REVIEW,MCP_TOOLS ai
+    class AZURE_MCP,DAWN_MCP,CUSTOM_MCP mcp
+    class OPA,REGO,YAML_POL policy
+    class PG,REDIS,RABBIT,BLOB data
+    class PROM,GRAF,OTEL,INSIGHTS monitor

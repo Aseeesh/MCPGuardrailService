@@ -1,0 +1,257 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "tests/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [dev, staging, prod]
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ===== Build & Test =====
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # .NET API Gateway
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build API Gateway
+        run: |
+          cd src/api-gateway
+          dotnet restore
+          dotnet build --configuration Release --no-restore
+          dotnet publish --configuration Release --no-build -o ${{ github.workspace }}/publish/api
+
+      # Python AI Service
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build AI Service
+        run: |
+          cd src/ai-service
+          pip install -r requirements.txt
+          cp -r . ${{ github.workspace }}/publish/ai
+
+      # React Frontend
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Frontend
+        run: |
+          cd src/frontend
+          npm install
+          npm run build
+          cp -r dist ${{ github.workspace }}/publish/web
+
+      # Upload artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-gateway
+          path: publish/api
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-service
+          path: publish/ai
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend
+          path: publish/web
+
+  # ===== Infrastructure =====
+  infrastructure:
+    name: "Terraform: ${{ github.event.inputs.environment || 'dev' }}"
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="alert_emails=[\"${{ secrets.ALERT_EMAIL }}\"]" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Export Outputs
+        id: tf
+        working-directory: terraform
+        run: |
+          echo "api_name=$(terraform output -raw api_url | sed 's|https://||;s|\.azurewebsites\.net||')" >> "$GITHUB_OUTPUT"
+          echo "ai_name=$(terraform output -raw ai_service_url | sed 's|https://||;s|\.azurewebsites\.net||')" >> "$GITHUB_OUTPUT"
+          echo "frontend_name=$(terraform output -raw frontend_url | sed 's|https://||')" >> "$GITHUB_OUTPUT"
+
+    outputs:
+      api_name: ${{ steps.tf.outputs.api_name }}
+      ai_name: ${{ steps.tf.outputs.ai_name }}
+      frontend_name: ${{ steps.tf.outputs.frontend_name }}
+
+  # ===== Deploy Services =====
+  deploy-api:
+    name: Deploy API Gateway
+    needs: [build, infrastructure]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: api-gateway
+          path: api
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ needs.infrastructure.outputs.api_name }}
+          package: api
+
+  deploy-ai:
+    name: Deploy AI Service
+    needs: [build, infrastructure]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ai-service
+          path: ai
+
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ needs.infrastructure.outputs.ai_name }}
+          package: ai
+
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: [build, infrastructure]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend
+          path: web
+
+      - name: Deploy Static Web App
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "upload"
+          app_location: "web"
+          skip_app_build: true
+
+  # ===== Database Migration =====
+  migrate-db:
+    name: Run Database Migrations
+    needs: [deploy-api, infrastructure]
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run SQL Migrations
+        run: |
+          for sql_file in sql/*.sql; do
+            echo "Running: $sql_file"
+            az postgres flexible-server execute \
+              --name "psql-guardrail-${{ github.event.inputs.environment || 'dev' }}" \
+              --admin-user guardrail_admin \
+              --admin-password "${{ secrets.DB_PASSWORD }}" \
+              --database-name guardrail \
+              --file-path "$sql_file" || true
+          done
+
+  # ===== Smoke Test =====
+  smoke-test:
+    name: Smoke Test
+    needs: [deploy-api, deploy-ai, deploy-frontend, migrate-db]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health checks
+        run: |
+          API_URL="https://${{ needs.infrastructure.outputs.api_name }}.azurewebsites.net"
+          AI_URL="https://${{ needs.infrastructure.outputs.ai_name }}.azurewebsites.net"
+
+          echo "Checking API Gateway..."
+          curl -sf "$API_URL/health" || { echo "API health check failed"; exit 1; }
+
+          echo "Checking AI Service..."
+          curl -sf "$AI_URL/health" || { echo "AI service health check failed"; exit 1; }
+
+          echo "Testing pipeline..."
+          RESULT=$(curl -sf -X POST "$API_URL/api/pipeline/detect" \
+            -H "Content-Type: application/json" \
+            -d '{"Content":"test@example.com","ResourceType":"text","Source":"user_input","Frameworks":["GDPR"]}')
+          echo "Pipeline result: $RESULT"
+
+          echo "All smoke tests passed!"

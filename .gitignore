@@ -1,0 +1,10 @@
+node_modules/
+dist/
+bin/
+obj/
+__pycache__/
+*.pyc
+.env
+.terraform/
+*.tfstate*
+.vite/

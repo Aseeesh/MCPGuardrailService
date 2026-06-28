@@ -1,0 +1,44 @@
+%%{ init: { 'theme': 'dark' } }%%
+graph LR
+    subgraph Development
+        DEV[Write Policy<br/>YAML/Rego] --> TEST_LOCAL[Local Tests<br/>opa test -v]
+        TEST_LOCAL --> PR[Pull Request]
+    end
+
+    subgraph CI["CI Pipeline"]
+        PR --> SYNTAX[Syntax Check<br/>opa check --strict]
+        SYNTAX --> UNIT[Unit Tests<br/>Rego test suite]
+        UNIT --> GOLDEN[Golden Tests<br/>Live OPA validation]
+        GOLDEN --> BENCH[Benchmarks<br/>p50 < 50ms SLA]
+        BENCH --> IMPACT[Impact Assessment<br/>Risk: Low/Med/High]
+    end
+
+    subgraph Review
+        IMPACT --> REVIEW[PR Review<br/>+ Compliance Approval]
+    end
+
+    subgraph Deployment
+        REVIEW --> CANARY[Canary 1%<br/>5-min monitor]
+        CANARY --> R10[Rollout 10%]
+        R10 --> R50[Rollout 50%]
+        R50 --> R100[Full Rollout 100%]
+        R100 --> TAG[Git Tag<br/>policy-v20240115-a3f7]
+    end
+
+    subgraph Monitoring
+        R100 --> MON[Real-time Monitor<br/>FP rate + Latency]
+        MON --> |Threshold breach| ROLLBACK[Auto Rollback]
+        ROLLBACK --> |Revert| CANARY
+    end
+
+    classDef dev fill:#1e40af,stroke:#3b82f6,color:#fff
+    classDef ci fill:#065f46,stroke:#10b981,color:#fff
+    classDef review fill:#713f12,stroke:#eab308,color:#fff
+    classDef deploy fill:#581c87,stroke:#a855f7,color:#fff
+    classDef monitor fill:#831843,stroke:#ec4899,color:#fff
+
+    class DEV,TEST_LOCAL,PR dev
+    class SYNTAX,UNIT,GOLDEN,BENCH,IMPACT ci
+    class REVIEW review
+    class CANARY,R10,R50,R100,TAG deploy
+    class MON,ROLLBACK monitor

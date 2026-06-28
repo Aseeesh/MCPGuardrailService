@@ -1,0 +1,89 @@
+# ROI Calculation — MCPGuardrailService
+# Enterprise Guardrail & Compliance Service
+
+investment:
+  development:
+    description: "12-week build, 2 senior engineers"
+    hours: 960
+    rate_per_hour: 125
+    total: 120000
+
+  infrastructure_year1:
+    azure_free_tier: 600
+    ollama_gpu: 3600
+    total: 4200
+
+  maintenance_annual:
+    description: "0.25 FTE ongoing maintenance"
+    total: 37500
+
+  total_year1: 161700
+  total_year2_plus: 41700
+
+annual_savings:
+  manual_review_reduction:
+    before: "3 FTE reviewing compliance (1200 reviews/week × 72h turnaround)"
+    after: "1.2 FTE (480 reviews/week × 2.3h turnaround)"
+    fte_saved: 1.8
+    cost_per_fte: 150000
+    total: 270000
+
+  incident_response:
+    before: "96h average detection, 2 data exposure incidents/year"
+    after: "<1 minute detection, automated containment"
+    estimated_breach_cost: 500000
+    risk_reduction_pct: 80
+    total: 400000
+
+  compliance_audit:
+    before: "8 weeks manual evidence collection per audit"
+    after: "Automated evidence packages, 2 weeks review"
+    audits_per_year: 2
+    weeks_saved_per_audit: 3
+    cost_per_week: 8000
+    total: 48000
+
+  enterprise_deals:
+    description: "SOC2 Type II unblocks enterprise pipeline"
+    deals_accelerated: 2
+    avg_deal_value: 100000
+    total: 200000
+
+  avoided_fines:
+    gdpr_exposure: 1000000
+    hipaa_exposure: 750000
+    soc2_audit_failure: 250000
+    risk_reduction_pct: 85
+    total: 170000
+
+  total_annual_savings: 1088000
+
+roi:
+  year1:
+    investment: 161700
+    savings: 1088000
+    net: 926300
+    roi_pct: 572
+
+  year2:
+    investment: 41700
+    savings: 1088000
+    net: 1046300
+    roi_pct: 2509
+
+  three_year:
+    total_investment: 245100
+    total_savings: 3264000
+    net_value: 3018900
+    npv_10pct: 2812000
+    irr_pct: 580
+
+  payback_period_months: 1.8
+
+qualitative_benefits:
+  - "Real-time compliance monitoring replaces quarterly manual audits"
+  - "Auditor confidence from immutable hash-chain audit trail"
+  - "Developer velocity — policy-as-code enables 45-min deployment vs 2-week manual"
+  - "Reduced regulatory risk across GDPR, HIPAA, SOC2 simultaneously"
+  - "Scalable architecture handles 500 req/s sustained, 5000 req/s spike"
+  - "Knowledge preservation — compliance rules codified, not in people's heads"

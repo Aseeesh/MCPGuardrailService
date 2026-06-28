@@ -1,0 +1,53 @@
+%%{ init: { 'theme': 'dark' } }%%
+sequenceDiagram
+    participant C as Client
+    participant RL as Rate Limiter
+    participant AUTH as JWT Auth
+    participant DET as Deterministic<br/>Stage (<20ms)
+    participant CACHE as Redis Cache
+    participant OPA as OPA Policies<br/>(<30ms)
+    participant ENS as Ensemble<br/>Decision
+    participant MQ as RabbitMQ
+    participant LLM as LLM Judge<br/>(Async)
+    participant REM as Remediation
+    participant AUD as Audit Trail
+
+    C->>RL: POST /api/pipeline/detect
+    RL->>AUTH: Rate check passed
+    AUTH->>DET: JWT validated
+
+    Note over DET: 33 compiled regex<br/>NonBacktracking<br/>Email, Phone, SSN,<br/>CC (Luhn), Injection,<br/>Credentials
+
+    DET->>DET: Pattern matching
+
+    alt Critical violation found (confidence ≥ 0.95)
+        DET->>REM: Fast-path BLOCK
+        REM->>AUD: Log decision
+        AUD->>C: 200 {decision: "block", timings: {det: 12ms}}
+    else No critical — check cache
+        DET->>CACHE: Check L1 (memory) → L2 (Redis)
+        alt Cache hit
+            CACHE-->>ENS: Cached OPA result
+        else Cache miss
+            DET->>OPA: Evaluate 6 policy packages
+            OPA-->>CACHE: Store result (5min TTL)
+            OPA-->>ENS: Violations + decisions
+        end
+
+        ENS->>ENS: Weighted scoring
+
+        alt Confidence ≥ 0.85 — auto-approve
+            ENS->>REM: Decision: allow/redact
+        else Confidence < 0.70 — needs LLM
+            ENS->>MQ: Queue for LLM judge
+            MQ->>LLM: Async processing
+            ENS->>REM: Preliminary: escalate
+            Note over LLM: 5 prompt templates<br/>PII, Security,<br/>Compliance, Safety, Brand
+            LLM-->>AUD: Async update with LLM result
+        else 0.70–0.85 — borderline
+            ENS->>REM: Decision: escalate to human
+        end
+
+        REM->>AUD: Log with hash chain
+        AUD->>C: 200 {decision, confidence, violations, timings}
+    end

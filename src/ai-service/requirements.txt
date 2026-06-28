@@ -1,0 +1,9 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+pydantic==2.10.4
+langgraph==0.2.60
+langchain-core==0.3.29
+redis==5.2.1
+pika==1.3.2
+psycopg2-binary==2.9.10

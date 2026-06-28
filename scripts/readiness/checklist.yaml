@@ -1,0 +1,202 @@
+apiVersion: guardrail.io/v1
+kind: ProductionReadinessChecklist
+metadata:
+  name: "guardrail-production-readiness"
+  version: "1.0.0"
+  last_assessed: ""
+
+categories:
+  - name: Security
+    controls:
+      - id: SEC-01
+        name: "JWT Authentication"
+        status: implemented
+        file: "src/api-gateway/Security/JwtAuthMiddleware.cs"
+        evidence: "JWT validation with issuer, audience, expiry checks"
+
+      - id: SEC-02
+        name: "Role-Based Access Control"
+        status: implemented
+        file: "src/api-gateway/Security/SecurityHeadersMiddleware.cs"
+        evidence: "RBAC middleware with route-role mapping for 7 API groups"
+
+      - id: SEC-03
+        name: "API Rate Limiting"
+        status: implemented
+        file: "src/api-gateway/Security/RateLimitingMiddleware.cs"
+        evidence: "Redis sliding window + in-memory fallback, per-endpoint limits"
+
+      - id: SEC-04
+        name: "CORS Configuration"
+        status: implemented
+        file: "src/api-gateway/Program.cs"
+        evidence: "Origin whitelist with credentials support, separate public policy"
+
+      - id: SEC-05
+        name: "Security Headers (HSTS, CSP)"
+        status: implemented
+        file: "src/api-gateway/Security/SecurityHeadersMiddleware.cs"
+        evidence: "HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy"
+
+      - id: SEC-06
+        name: "Azure Key Vault for Secrets"
+        status: implemented
+        file: "scripts/security_setup.sh"
+        evidence: "Key Vault creation and secret storage via security setup script"
+
+      - id: SEC-07
+        name: "SQL Injection Prevention"
+        status: implemented
+        file: "src/policy-engine/policies/security/injection.rego"
+        evidence: "10 SQL injection patterns in deterministic stage + OPA policy"
+
+      - id: SEC-08
+        name: "XSS Protection"
+        status: implemented
+        file: "src/api-gateway/Pipeline/Stages/DeterministicStage.cs"
+        evidence: "10 XSS patterns in deterministic stage, CSP header blocks inline scripts"
+
+      - id: SEC-09
+        name: "Data Encryption at Rest"
+        status: implemented
+        file: "terraform/modules/database/main.tf"
+        evidence: "PostgreSQL SSL required, Azure Storage server-side encryption, Redis TLS"
+
+  - name: Performance
+    controls:
+      - id: PERF-01
+        name: "Database Indexing Strategy"
+        status: implemented
+        file: "sql/002_performance_indexes.sql"
+        evidence: "Composite, partial, BRIN indexes on audit_log and violations"
+
+      - id: PERF-02
+        name: "Redis Caching Strategy"
+        status: implemented
+        file: "src/api-gateway/Performance/Caching/PolicyCache.cs"
+        evidence: "L1 in-memory LRU (10K, 60s) + L2 Redis (5min), version-aware invalidation"
+
+      - id: PERF-03
+        name: "Connection Pooling"
+        status: implemented
+        file: "src/api-gateway/Program.cs"
+        evidence: "EF Core connection pooling for PostgreSQL, Redis multiplexer singleton"
+
+      - id: PERF-04
+        name: "Async Processing"
+        status: implemented
+        file: "src/api-gateway/Performance/Async/RabbitMqPublisher.cs"
+        evidence: "RabbitMQ queues for LLM, audit, remediation with persistent messages"
+
+      - id: PERF-05
+        name: "Response Compression"
+        status: implemented
+        file: "src/api-gateway/Program.cs"
+        evidence: "UseResponseCompression() in middleware pipeline"
+
+      - id: PERF-06
+        name: "Compiled Regex (NonBacktracking)"
+        status: implemented
+        file: "src/api-gateway/Pipeline/Stages/DeterministicStage.cs"
+        evidence: "All patterns compiled with RegexOptions.Compiled | NonBacktracking"
+
+  - name: Reliability
+    controls:
+      - id: REL-01
+        name: "Health Check Endpoints"
+        status: implemented
+        file: "src/api-gateway/Program.cs"
+        evidence: "/health (full), /health/live (liveness), /health/ready (readiness)"
+
+      - id: REL-02
+        name: "Circuit Breaker"
+        status: implemented
+        file: "src/api-gateway/Pipeline/CircuitBreaker/CircuitBreaker.cs"
+        evidence: "Custom circuit breaker for LLM + Microsoft.Extensions.Http.Resilience for HTTP"
+
+      - id: REL-03
+        name: "Retry with Exponential Backoff"
+        status: implemented
+        file: "src/api-gateway/Reliability/ResiliencePolicy.cs"
+        evidence: "3 retries, 500ms base delay, exponential + jitter via Polly"
+
+      - id: REL-04
+        name: "Timeout Configuration"
+        status: implemented
+        file: "src/api-gateway/Reliability/ResiliencePolicy.cs"
+        evidence: "Per-attempt (30s) and total request (120s) timeouts"
+
+      - id: REL-05
+        name: "Graceful Shutdown"
+        status: implemented
+        file: "src/api-gateway/Reliability/ResiliencePolicy.cs"
+        evidence: "GracefulShutdownService with 5s drain period for in-flight requests"
+
+      - id: REL-06
+        name: "Docker Healthchecks"
+        status: implemented
+        file: "docker-compose.yml"
+        evidence: "Health checks on PostgreSQL, Redis, RabbitMQ with intervals and retries"
+
+      - id: REL-07
+        name: "Queue Dead-Letter Handling"
+        status: implemented
+        file: "src/api-gateway/Performance/Async/RabbitMqPublisher.cs"
+        evidence: "Durable queues with persistent messages, topic exchange routing"
+
+  - name: Observability
+    controls:
+      - id: OBS-01
+        name: "Structured Logging"
+        status: implemented
+        file: "src/api-gateway/Observability/ObservabilitySetup.cs"
+        evidence: "JSON console logging with UTC timestamps, scopes, tenant/request correlation"
+
+      - id: OBS-02
+        name: "Application Insights"
+        status: implemented
+        file: "terraform/modules/monitoring/main.tf"
+        evidence: "App Insights with Log Analytics workspace, 1GB/day free cap"
+
+      - id: OBS-03
+        name: "Custom Metrics (OpenTelemetry)"
+        status: implemented
+        file: "src/api-gateway/Observability/ObservabilitySetup.cs"
+        evidence: "OTLP exporter for traces and metrics, ASP.NET Core + HTTP instrumentation"
+
+      - id: OBS-04
+        name: "Distributed Tracing"
+        status: implemented
+        file: "src/api-gateway/Observability/ObservabilitySetup.cs"
+        evidence: "ActivitySource-based tracing with tenant/method/path tags"
+
+      - id: OBS-05
+        name: "Performance Dashboard"
+        status: implemented
+        file: "monitoring/grafana/dashboards/guardrail-overview.json"
+        evidence: "10-panel Grafana dashboard with latency, throughput, cache, queues"
+
+      - id: OBS-06
+        name: "Alerting Rules"
+        status: implemented
+        file: "terraform/modules/monitoring/main.tf"
+        evidence: "Azure Monitor alerts for error rate >50/15min, latency p95 >500ms"
+
+      - id: OBS-07
+        name: "Audit Logging"
+        status: implemented
+        file: "src/api-gateway/Audit/AuditService.cs"
+        evidence: "Immutable hash-chain audit trail with tamper detection"
+
+      - id: OBS-08
+        name: "Cost Tracking"
+        status: implemented
+        file: "terraform/main.tf"
+        evidence: "Azure consumption budget with 80%/100% threshold alerts"
+
+summary:
+  total_controls: 30
+  implemented: 30
+  partial: 0
+  not_implemented: 0
+  readiness_score: 100

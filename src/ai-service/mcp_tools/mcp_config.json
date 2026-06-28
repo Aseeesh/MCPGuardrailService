@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "azure": {
+      "name": "Azure MCP Server",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp"],
+      "env": {
+        "AZURE_SUBSCRIPTION_ID": "${AZURE_SUBSCRIPTION_ID}",
+        "AZURE_TENANT_ID": "${AZURE_TENANT_ID}"
+      },
+      "tools": [
+        "azure_resource_list",
+        "azure_resource_get",
+        "azure_monitor_metrics",
+        "azure_monitor_logs",
+        "azure_policy_assignments",
+        "azure_compliance_state",
+        "azure_cost_management",
+        "azure_security_center"
+      ]
+    },
+    "dawnguard": {
+      "name": "Dawnguard MCP",
+      "command": "npx",
+      "args": ["-y", "@dawnguard/mcp"],
+      "env": {
+        "DAWNGUARD_API_KEY": "${DAWNGUARD_API_KEY}"
+      },
+      "tools": [
+        "dawnguard_scan",
+        "dawnguard_insights",
+        "dawnguard_architectures",
+        "dawnguard_compliance_check"
+      ]
+    },
+    "guardrail": {
+      "name": "Custom Guardrail MCP",
+      "command": "python",
+      "args": ["-m", "mcp_tools.guardrail_tools"],
+      "tools": [
+        "validate",
+        "list_architectures",
+        "query_insights",
+        "guardrail_guidance",
+        "design_architecture"
+      ]
+    }
+  }
+}

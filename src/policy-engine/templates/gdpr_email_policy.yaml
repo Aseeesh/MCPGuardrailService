@@ -1,0 +1,45 @@
+apiVersion: guardrail.io/v1
+kind: Policy
+metadata:
+  name: "PII-GDPR-EMAIL-001"
+  version: "1.0.0"
+  description: "Detect and protect email addresses under GDPR"
+  author: "compliance-team"
+  created: "2024-01-15T00:00:00Z"
+  updated: "2024-01-15T00:00:00Z"
+  tags: ["pii", "gdpr", "email"]
+spec:
+  frameworks:
+    - name: "GDPR"
+      controls: ["ART5", "ART6", "ART25"]
+  severity: "high"
+  category: "pii"
+  rules:
+    - id: "email-pattern"
+      description: "Detect email address patterns"
+      type: "pattern"
+      config:
+        patterns:
+          - '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    - id: "email-keyword"
+      description: "Detect email-related context"
+      type: "keyword"
+      config:
+        keywords: ["email address", "e-mail", "contact email", "send to"]
+  remediation:
+    action: "redact"
+    message: "Email address detected — redacting under GDPR Art. 5 data minimization"
+    auto_fix: true
+  conditions:
+    source_types: ["llm_output", "api_response"]
+    content_types: ["text", "email"]
+    environments: ["production", "staging"]
+  tests:
+    should_trigger:
+      - input: "Contact john.doe@example.com for details"
+        expected_violation: "email-pattern"
+      - input: "Send the report to user@company.co.uk"
+        expected_violation: "email-pattern"
+    should_pass:
+      - input: "The system uses SMTP protocol on port 25"
+      - input: "Check the email configuration settings"

@@ -1,0 +1,128 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: ./src/api-gateway
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__Postgres=Host=postgres;Database=guardrail;Username=guardrail;Password=${POSTGRES_PASSWORD}
+      - Redis__ConnectionString=redis:6379
+      - RabbitMQ__Host=rabbitmq
+      - AiService__BaseUrl=http://ai-service:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  ai-service:
+    build: ./src/ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://guardrail:${POSTGRES_PASSWORD}@postgres:5432/guardrail
+      - OPA_URL=http://opa:8181
+    depends_on:
+      - ollama
+      - rabbitmq
+      - redis
+      - postgres
+      - opa
+    volumes:
+      - ./src/ai-service/mcp_tools:/app/mcp_tools
+      - ./src/policy-engine:/app/../policy-engine
+
+  frontend:
+    build: ./src/frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  opa:
+    image: openpolicyagent/opa:latest
+    ports:
+      - "8181:8181"
+    command: run --server --log-level info --watch /policies
+    volumes:
+      - ./src/policy-engine/policies:/policies:ro
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: guardrail
+      POSTGRES_USER: guardrail
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guardrail_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardrail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guardrail
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guardrail_dev}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    profiles: ["monitoring"]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    profiles: ["monitoring"]
+
+volumes:
+  postgres_data:
+  ollama_data:
+  grafana_data:
