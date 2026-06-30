@@ -192,7 +192,7 @@ async def reload_policies():
     from pathlib import Path
     import hashlib
 
-    policy_dir = Path("/app/../policy-engine/policies")
+    policy_dir = Path("/app/policy-engine/policies")
     if not policy_dir.exists():
         policy_dir = Path(__file__).parent.parent / "policy-engine" / "policies"
 

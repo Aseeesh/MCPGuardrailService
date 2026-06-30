@@ -73,7 +73,7 @@ docker compose up -d
 docker exec -it ollama ollama pull mistral
 
 # Access services
-# Frontend:  http://localhost:5173
+# Frontend:  http://localhost:5174
 # API:       http://localhost:5000
 # AI Service: http://localhost:8000
 # OPA:       http://localhost:8181

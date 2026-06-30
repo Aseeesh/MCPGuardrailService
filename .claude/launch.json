@@ -6,7 +6,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5174,
-      "cwd": "../Portfolio Projects/MCPGuardrailService/src/frontend"
+      "cwd": "src/frontend"
     }
   ]
 }
