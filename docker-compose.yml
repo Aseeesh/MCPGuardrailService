@@ -1,16 +1,15 @@
-version: "3.9"
-
 services:
   api-gateway:
     build: ./src/api-gateway
     ports:
-      - "5000:8080"
+      - "5001:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__Postgres=Host=postgres;Database=guardrail;Username=guardrail;Password=${POSTGRES_PASSWORD}
       - Redis__ConnectionString=redis:6379
       - RabbitMQ__Host=rabbitmq
       - AiService__BaseUrl=http://ai-service:8000
+      - OpaUrl=http://opa:8181
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,7 +43,9 @@ services:
     ports:
       - "5174:5174"
     environment:
-      - VITE_API_URL=http://localhost:5000
+      - VITE_API_URL=http://api-gateway:8080
+    depends_on:
+      - api-gateway
 
   ollama:
     image: ollama/ollama:latest
@@ -58,7 +59,7 @@ services:
     image: openpolicyagent/opa:latest
     ports:
       - "8181:8181"
-    command: run --server --log-level info --watch /policies
+    command: run --server --addr 0.0.0.0:8181 --log-level info --watch /policies
     volumes:
       - ./src/policy-engine/policies:/policies:ro
 

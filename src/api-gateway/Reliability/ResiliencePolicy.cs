@@ -26,7 +26,7 @@ public static class ResiliencePolicy
 
             // Circuit breaker
             options.CircuitBreaker.FailureRatio = 0.5;
-            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(timeoutSeconds * 2 + 1);
             options.CircuitBreaker.MinimumThroughput = circuitBreakerThreshold;
             options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(15);
 
@@ -92,7 +92,7 @@ public static class HealthCheckExtensions
                 name: "ai-service",
                 tags: ["service", "ready"])
             .AddUrlGroup(
-                new Uri("http://localhost:8181/health"),
+                new Uri($"{configuration["OpaUrl"] ?? "http://localhost:8181"}/health"),
                 name: "opa",
                 tags: ["service", "ready"]);
 

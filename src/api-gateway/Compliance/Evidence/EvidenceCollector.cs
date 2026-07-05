@@ -65,7 +65,7 @@ public class EvidenceCollector
 
     public List<EvidencePackage> CollectAllFrameworks(string tenantId, string period)
     {
-        return ["GDPR", "HIPAA", "SOC2"]
+        return new[] { "GDPR", "HIPAA", "SOC2" }
             .Select(f => CollectEvidence(f, tenantId, period))
             .ToList();
     }

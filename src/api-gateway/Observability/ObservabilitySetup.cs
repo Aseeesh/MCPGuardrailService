@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 namespace GuardrailApi.Observability;
 
